@@ -38,9 +38,15 @@ def git_pull(repo_path):
         print(f"❌ 更新过程中出错: {str(e)}")
         return False
 
-def batch_update(root_dir):
-    """批量更新指定目录下的所有Git仓库"""
+def batch_update(root_dir, max_depth=2):
+    """批量更新指定目录下的所有Git仓库，支持二级目录
+    
+    Args:
+        root_dir: 根目录路径
+        max_depth: 最大扫描深度，默认为2（支持二级目录）
+    """
     print(f"开始批量更新Git仓库，根目录: {root_dir}\n")
+    print(f"扫描深度: {max_depth} 级目录\n")
     
     # 统计信息
     total_repos = 0
@@ -48,21 +54,54 @@ def batch_update(root_dir):
     failed_repos = 0
     skipped_dirs = 0
     
-    # 获取所有子目录
-    subdirs = [os.path.join(root_dir, d) for d in os.listdir(root_dir) 
-              if os.path.isdir(os.path.join(root_dir, d))]
-    
-    # 遍历每个子目录
-    for subdir in subdirs:
-        if is_git_repo(subdir):
+    # 递归扫描目录函数
+    def scan_directory(current_dir, current_depth=1):
+        nonlocal total_repos, updated_repos, failed_repos, skipped_dirs
+        
+        # 如果当前目录是Git仓库，则更新它
+        if is_git_repo(current_dir):
             total_repos += 1
-            if git_pull(subdir):
+            if git_pull(current_dir):
                 updated_repos += 1
             else:
                 failed_repos += 1
-        else:
-            print(f"跳过非Git仓库: {os.path.basename(subdir)}")
+            # 如果是Git仓库，不再往下扫描
+            return
+        
+        # 如果已达到最大深度，不再往下扫描
+        if current_depth > max_depth:
+            return
+        
+        # 获取所有子目录
+        try:
+            subdirs = [os.path.join(current_dir, d) for d in os.listdir(current_dir) 
+                      if os.path.isdir(os.path.join(current_dir, d))]
+            
+            # 遍历每个子目录
+            for subdir in subdirs:
+                scan_directory(subdir, current_depth + 1)
+                
+        except Exception as e:
+            print(f"扫描目录 {current_dir} 时出错: {str(e)}")
             skipped_dirs += 1
+    
+    # 开始扫描，跳过根目录自身的检查
+    try:
+        subdirs = [os.path.join(root_dir, d) for d in os.listdir(root_dir) 
+                  if os.path.isdir(os.path.join(root_dir, d))]
+        
+        for subdir in subdirs:
+            if is_git_repo(subdir):
+                total_repos += 1
+                if git_pull(subdir):
+                    updated_repos += 1
+                else:
+                    failed_repos += 1
+            else:
+                print(f"检查子目录: {os.path.basename(subdir)}")
+                scan_directory(subdir)
+    except Exception as e:
+        print(f"扫描根目录时出错: {str(e)}")
     
     # 打印统计信息
     print("\n" + "="*50)
@@ -70,7 +109,7 @@ def batch_update(root_dir):
     print(f"- 检测到的Git仓库总数: {total_repos}")
     print(f"- 成功更新的仓库数: {updated_repos}")
     print(f"- 更新失败的仓库数: {failed_repos}")
-    print(f"- 跳过的非Git目录数: {skipped_dirs}")
+    print(f"- 跳过的目录数: {skipped_dirs}")
     print("="*50)
 
 def main():
